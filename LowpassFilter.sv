@@ -1,56 +1,57 @@
 
 module FirLowpass(input  logic clk, reset,
 						input  logic [15:0] x,
-						output shortreal y);
+						output logic [15:0] y);
 	
 	int fd;
 	real data;
 	
-	shortreal h[4:0]; // Coefficients (175)
-	logic [15:0] temp = 0;
-	logic [15:0] cnt = 0;
+	logic [15:0] h[174:0] = '{default:1'b0}; // Coefficients (175)
+	logic [31:0] temp;
+	logic [11:0] cnt = 0;
+	int val;
 	
 	initial begin
-		 fd = $fopen("Testing.txt", "r");
+		 fd = $fopen("Coefficient.txt", "r");
 		 while (! $feof(fd)) begin
-			  void'($fscanf(fd, "%f\n", data));
-			  h[cnt] = shortreal'(data); //need to convert from binary to floating binary
+			  void'($fscanf(fd, "%f\n", data));				
+			  val = $rtoi((data + 1)/0.000030517578125); //convert float to quantized integer from 2^16-1 to 0
+			  h[cnt] = 16'(val ^ h[cnt]); //convert quantized integer to bits
 			  cnt = cnt + 2'h01;
 		 end
 		 $fclose(fd);
 	end
   
-	logic delay[7:0] = '{default:8'b00000000}; //will need 174 delays, 8 bits allows this
-	logic stageOut[7:0] = '{default:1'b0}; //will need 175 stages //pipeline stages
-	shortreal sumOut[7:0] = '{default:8'b00000000}; //will need 174 sums
-	logic [2:0] n = 0; //tap number
+	logic delay[174:0] = '{default:1'b0}; //174 delays
+	logic stageOut[175:0] = '{default:1'b0}; //175 pipeline stages
+	logic [15:0] sumOut[174:0] = '{default:1'b0}; //174 sums
+	logic [7:0] n = 0; //tap number
 	int ini = 2;
 	int hold = 0;
 	int shift;
 	
 	always_ff @(posedge clk) begin //control cycles
-		//$display("top%0b%0b", stageOut[n], delay[n]);
 		if (ini > 0) begin
 			sumOut[0] = h[0] * x;
 			ini = ini - 1;
 			hold = 1;
 		end else begin
-			if (stageOut[n] == 1) begin
-				shift = 4;
+			if (stageOut[n] == 1) begin //shifts values, and adds sums
+				shift = 174; //173 sums must shift
 				while (shift != 0) begin
 					sumOut[shift] = sumOut[shift - 1];
 					shift = shift - 1; 
 				end
 			end else if (delay[n] == 1) begin
 				sumOut[n + 1] <= (delay[n] * h[n+1]);
-				shift = 4;
+				shift = 174; //173 sums must shift
 				while (shift != 0) begin
 					sumOut[shift] = sumOut[shift - 1];
 					shift = shift - 1; 
 				end
 			end
 			
-			if (delay[n] == 1) begin //flipflop delay/stage //could use delay as normal no need for 2D arrays
+			if (delay[n] == 1) begin //flipflop delay/stageOut
 				stageOut[n] <= delay[n];
 				delay[n] <= stageOut[n - 1];
 			end else if (stageOut[n] == 1) begin
@@ -59,7 +60,7 @@ module FirLowpass(input  logic clk, reset,
 				n = n + 1;
 			end
 			
-			if (hold == 1) begin
+			if (hold == 1) begin //initialization logic
 				delay[0] <= 1;
 				sumOut[1] <= sumOut[0];
 				sumOut[0] = h[0] * x;
@@ -68,7 +69,7 @@ module FirLowpass(input  logic clk, reset,
 				delay[0] <= x;
 				sumOut[0] = h[0] * x;
 			end
-			assign y = sumOut[4];
+			assign y = sumOut[174];
 		end
 	end
 	
