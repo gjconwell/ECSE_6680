@@ -3,7 +3,9 @@ module gzip(input logic clk, reset,
 				output logic [10:0] y [31:0]);
 
 	logic [13:0] lz [31:0];
+	//dictionary holds 31 letters (3 offset, 3 length, 8 letter)
 	lz77 lz77(clk, reset, x, lz);
+	//improved dictionary holds 31 letters (3 offset, 3 length, 5 letter)
 	huffman huffman(clk, reset, lz, y);
 endmodule
 
@@ -24,7 +26,7 @@ module lz77(input logic clk, reset,
 	//14(112) size, with 6 (48) look ahead buffer
 	logic [7:0] window[13:0];
 	logic [119:0] temp; //temp input (x)
-	//dictionary holds 31 letters (3 offset, 3 length, 8 letter)
+	
 	int dictFilled; //tracks what values are filled in dict
 	
 	always @(posedge clk) begin
@@ -36,7 +38,6 @@ module lz77(input logic clk, reset,
 		while (temp[119:112] == 8'b00000000) begin //shift to left side
 			temp = temp << 8;
 		end 
-		$display("temp: %b ", temp);
 		
 		//loading values into window
 		c = 5;
@@ -50,8 +51,6 @@ module lz77(input logic clk, reset,
 		while (charend != 0) begin
 			length = '{default:3'b000};
 			offset = '{default:3'b000};
-			
-			$display("start: %b", window[5]);
 			
 			//check for duplicates in window
 			o = 6;
@@ -70,8 +69,6 @@ module lz77(input logic clk, reset,
 			//dictionary repetitions
 			if (offset[0] != 3'b000) begin 
 				for(int j = 0; j < io; j++) begin
-					$display("j:%d io:%d", j, io);
-					
 					append = 1;
 					while (append == 1) begin
 						length[j] = length[j] + 1;
@@ -96,13 +93,9 @@ module lz77(input logic clk, reset,
 					end
 				end
 				
-				$display("character: %b", window[5 - dict[dictFilled][10:8]]);
 				charend = window[5 - dict[dictFilled][10:8]];
-				$display("offset: %b length: %b", dict[dictFilled][13:11], dict[dictFilled][10:8]);
-				
 				dictFilled = dictFilled + 1;
 			end else begin //letter is not found in window (add new dict)
-				$display("nodict: %b", window[5]); //TODO: not always going to be window 5 will adjust for length
 				dict[dictFilled][15:8] = 8'b0000000;
 				dict[dictFilled][7:0] = window[5];
 				dictFilled = dictFilled + 1;
@@ -110,24 +103,14 @@ module lz77(input logic clk, reset,
 		
 			//shifting the window
 			for(int t = 0; t < (dict[dictFilled - 1][10:8] + 1); t++) begin
-				$display("windowfirst: %b, windowsecond: %b", window[5], window[4]);
-				$display("tripped");
 				s = 13;
 				while (s > 0) begin
-					$display("%d %b <- %b", s, window[s], window[s-1]);
 					window[s] = window[s-1];
 					s = s - 1;
 				end
-				$display("%d %b", 0, window[0]);
 				window[0] = temp[119:112];
 				temp = temp << 8;
-				
 			end
-			
-		end
-		
-		for(int i = 0; i < 32; i++) begin
-			$display("output %b", dict[i]);
 		end
 	end
 endmodule
@@ -139,7 +122,7 @@ module huffman(input logic clk, reset,
 	always @(negedge clk) 
 		for(int j = 0; j < 32; j++) begin
 			y[j][10:5] = x[j][13:8];
-			
+		
 			//most frequent letters are on the top (faster access time)
 			case(x[j][7:0])
 				8'b00000000: y[j][4:0] = 5'b11111; // "
@@ -170,8 +153,5 @@ module huffman(input logic clk, reset,
 				8'b01101010: y[j][4:0] = 5'b11001; // j 
 				8'b01110001: y[j][4:0] = 5'b11010; // q
 			endcase
-			
-			$display("yah %b %b", y[j], x[j]);
 		end 
-
 endmodule
